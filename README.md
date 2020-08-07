@@ -21,7 +21,7 @@ python -m ipykernel install --user --name oemof-jordan-env
 
 ## Usage 
 
-To use the model simply start the jupyter notebook: 
+To use the model simply start jupyter notebook from your terminal: 
 
 ```
 jupyter-notebook 
