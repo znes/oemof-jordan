@@ -18,6 +18,8 @@ color = {
     "uranium-st": "yellow",
     "gas-gt": "gray",
     "gas-cc": "lightgray",
+    "gas-de": "darkgray",
+    "gas-st": "slategray",
     "solar-pv": "lightyellow",
     "wind-onshore": "skyblue",
     "wind-offshore": "steelblue",
@@ -42,13 +44,13 @@ color = {
     "excess": "darkcyan",
     "shaleoil-st": "black",
     "fossil": "lightgray",
-    "hydro-phs-king-talal": "plum",
-    "hydro-phs-mujib": "magenta",
-    "hydro-phs-tannur": "purple",
+    "phs-king-talal": "skyblue",
+    "phs-mujib": "powderblue",
+    "phs-wadi-arab": "steelblue",
 }
 color_dict = {name: colors.to_hex(color) for name, color in color.items()}
 
-path = os.path.join(os.path.expanduser("~"), "oemof-results", "jordan")
+path = os.path.join(os.path.expanduser("~"), "oemof-results", "jordan-scenario-report")
 
 renewables = [
     "hydro-ror",
@@ -56,36 +58,34 @@ renewables = [
     "solar-pv",
 ]
 phs_storages = [
-    "phs-king-talal",
-    "phs-mujib",
-    "phs-wadi-arab",
+     "phs-king-talal",
+     "phs-mujib",
+     "phs-wadi-arab",
+    #"phs"
 ]
 storages = ["lithium-battery"]
 
 conventionals = [
     "gas-cc",
     "gas-gt",
+    "gas-st",
+    "gas-de",
     "shaleoil-st"
 ]
 
 
 
-
-storage_scenarios  = ["STOR"] +["STOR-" + str(s) for s in range(40, 100, 10)]
-conv_scenarios =  ["CONT"] #+ ["CONT-" + str(s) for s in range(10, 20, 10)]
-re_scenarios =  ["RE"] + ["RE-" + str(s) for s in range(40, 100, 10)]
+aut_scenarios  = ["AUT"] +["AUT-" + str(s) for s in range(70, 100, 10)]
+conv_scenarios =  ["CONT"]
+re_scenarios =  ["GRE"] + ["GRE-" + str(s) for s in range(40, 100, 10)]
 base_scenarios =  ["BASE"]+ ["BASE-" + str(s) for s in range(40, 100, 10)]
-ee_scenarios =  ["EE"] + ["EE-" + str(s) for s in range(40, 100, 10)]
+sq_scenarios =  ["SQ"] + ["SQ-" + str(s) for s in range(10, 80, 10)]
+fu_scenarios =  ["FU"] + ["FU-" + str(s) for s in range(10, 80, 10)]
 
-# base_scenarios.reverse()
-# low_scenarios.reverse()
-# high_scenarios.reverse()
-# pv_scenarios.reverse()
-# storage_scenarios.reverse()
 
 all_capacities = pd.DataFrame()
 co2 = pd.DataFrame()
-
+co2[["CONT", "BASE", "GRE", "AUT"]]
 energy = pd.DataFrame()
 for dir in os.listdir(path):
     capacities = pd.read_csv(
@@ -118,10 +118,7 @@ for dir in os.listdir(path):
 
     capacities.groupby(level=[0]).sum()
 
-co2.loc["Shadow Price in $/t"] = co2.loc["Shadow Price in $/t"] * -1
-
-re_share = 1 - (
-     energy.T[conventionals].sum(axis=1) / energy.T["JO-load"])
+re_share = (1-energy.loc[conventionals].sum() / energy.loc["JO-load"]).sort_index()
 storages = all_capacities.loc[
     [c for c in phs_storages + storages if c in all_capacities.index]
 ]
@@ -138,52 +135,68 @@ _df = _df.loc[_df.index.sort_values()]
 # x = [i for i in _df.columns]
 # x.sort()
 # x.sort(key=len, reverse=False)
-x = conv_scenarios + base_scenarios
+x = conv_scenarios + base_scenarios + re_scenarios + aut_scenarios
 #_df.index = [i.split("-")[1] for i in _df.index]
-ax = (_df[x].T.divide(1000)).plot(
+order = ["gas-cc", "gas-de", "gas-gt", "gas-st", "shaleoil-st", "solar-pv", "wind-onshore", "hydro-ror" ,"phs", "lithium-battery"]
+
+
+ax = (_df.loc[order][x].T.divide(1000)).plot(
     kind="bar",
     stacked=True,
-    color=[color_dict.get(c) for c in _df.index],
-    rot=90,
+    color=[color_dict.get(c) for c in _df.loc[order].index],
+    rot=0,
 )
-lgd = ax.legend(
-    loc="lower left",
-    bbox_to_anchor=(0, -0.6),
-    shadow=False,
-    frameon=False,
-    ncol=3,
-)
+ax.legend()
+#ax.set_ylim(-60, 70)
+handles, labels = ax.get_legend_handles_labels()
+lgd = {k: v for k, v in dict(zip(handles, labels)).items()}
 ax.set_ylabel("Installed capacity in GW")
 ax.grid(linestyle="--", lw=0.2)
 
-# ax2 = ax.twinx()
-# co2.loc["CO2 (Mio. t)", x].plot(
-#     linestyle="", marker="D", color="orange", label="CO2", ax=ax2
-# )
-# #ax2.set_ylim(0, 9)
-# ax2.set_ylabel("CO2 in Mio. t")
-plt.xticks(rotation=45)
-
+ax2 = ax.twinx()
+re_share[x].multiply(100).plot(
+    linestyle="", marker="D", color="orange", label="RE-share", ax=ax2
+)
+ax2.set_ylim(0, 100)
+ax2.set_ylabel("RE-share in %")
+plt.xticks(rotation=0)
+lines2, labels2 = ax2.get_legend_handles_labels()
+lgd = ax.legend(list(lgd.keys()) + lines2, list(lgd.values()) + labels2,
+    loc="lower left",
+    bbox_to_anchor=(-0.1, -0.35),
+    shadow=False,
+    frameon=False,
+    ncol=4,
+)
 plt.savefig(
     "visualization/figures/installed_capacities.pdf".format(""),
     bbox_extra_artists=(lgd,),
     bbox_inches="tight",
 )
-
-ax = co2[x].T.plot(
-    kind="scatter", x="CO2 (Mio. t)", y="Shadow Price in $/t")
-ax.grid(linestyle="--", lw=0.2)
-ax.set_ylabel("Model CO2 Price in $/")
-ax.set_xlabel("CO2 Emission in Mio. t")
+_df.loc[order][x].T.astype(int).to_latex(
+        caption="Installed capacities in MW.",
+        label="tab:installed_capacities",
+        buf="visualization/tables/installed_capacities.tex")
 
 
+
+#
+# stors = all_capacities.loc[
+#     [c for c in ["hydro-phs-wadi-arab", "hydro-phs-king-talal", "hydro-phs-mujib"] +
+#      storages if c in all_capacities.index]
+# ]
+# stors.index = [i.replace("hydro-", "") for i in stors.index]
+# stors[x].T.round(0).to_latex(
+#         caption="Installed storage capacities in the scenarios in MW.",
+#         label="tab:storage_capacities",
+#         buf="visualization/tables/installed_storage_capacities.tex")
 # ax = (
-#     storages[x]
+#     stors[x]
 #     .T.divide(1000)
 #     .plot(
 #         kind="bar",
 #         stacked=True,
-#         color=[color_dict.get(c) for c in storages.index],
+#         color=[color_dict.get(c) for c in stors.index],
 #         rot=45,
 #     )
 # )
@@ -198,7 +211,7 @@ ax.set_xlabel("CO2 Emission in Mio. t")
 # ax.grid(linestyle="--", lw=0.2)
 # plt.xticks(rotation=45)
 # plt.savefig(
-#     "visualization/figures/storage_capacities-{}.pdf".format(select),
+#     "visualization/figures/storage_capacities.pdf",
 #     bbox_extra_artists=(lgd,),
 #     bbox_inches="tight",
 # )
@@ -271,11 +284,11 @@ for dir in os.listdir(path):
 fig, axs = plt.subplots(2, 1, sharex=True, sharey=True)
 
 filling_levels1 = pd.read_csv(
-    os.path.join(path, base_scenarios[0], "output", "filling_levels.csv"), index_col=0,
+    os.path.join(path, base_scenarios[1], "output", "filling_levels.csv"), index_col=0,
     parse_dates=True
 )
 filling_levels2 = pd.read_csv(
-    os.path.join(path, base_scenarios[3], "output", "filling_levels.csv"), index_col=0,
+    os.path.join(path, base_scenarios[5], "output", "filling_levels.csv"), index_col=0,
     parse_dates=True
 )
 
@@ -308,7 +321,7 @@ axs[0] = sns.heatmap(
     # vmax=vmax,
     # vmin=vmin,
     ax=axs[0],
-    cbar_kws={"label": "SOC in % \n Opt", "ticks": [0, 25, 50, 75, 100]},
+    cbar_kws={"label": "SOC in % \n Base-40", "ticks": [0, 25, 50, 75, 100]},
 )
 
 axs[1] = sns.heatmap(
@@ -319,7 +332,7 @@ axs[1] = sns.heatmap(
     # vmax=vmax,
     # vmin=vmin,
     ax=axs[1],
-    cbar_kws={"label": "SOC in % \n 60% RE"},
+    cbar_kws={"label": "SOC in % \n Base-80"},
 )
 
 for a in axs:
@@ -341,10 +354,11 @@ plt.savefig(
 
 investment_cost.loc["phs"] = investment_cost.loc[[c for c in phs_storages if c in investment_cost.index]].sum()
 investment_cost = investment_cost.drop([c for c in phs_storages if c in investment_cost.index])
+x = sq_scenarios + fu_scenarios
+invest_plot = investment_cost[x].divide(1e9).T
 
 
-ax = investment_cost[
-    conv_scenarios + base_scenarios].divide(1e9).T.plot(
+ax = invest_plot.plot(
         kind="bar",
         stacked=True,
         color=[color_dict.get(c) for c in investment_cost.index],
@@ -352,31 +366,44 @@ ax = investment_cost[
 )
 lgd = ax.legend(
     loc="upper left",
-    #bbox_to_anchor=(0, -0.6),
+    bbox_to_anchor=(-0.05, -0.25),
     shadow=False,
     frameon=False,
-    ncol=2,
+    ncol=4,
 )
-ax.set_ylabel("Total investment cost in B$")
+ax.set_ylabel("Total annualised investment cost in Billio US $")
 ax.grid(linestyle="--", lw=0.2)
+
 plt.savefig(
-    "visualization/figures/investment_cost.pdf",
+    "visualization/figures/investment_cost-report.pdf",
     bbox_extra_artists=(lgd,),
     bbox_inches="tight",
 )
+invest_plot.multiply(1e3).round(2).fillna("-").to_latex(
+        caption="Investment cost in Mio. US $. ",
+        label="tab:investment_cost",
+        buf="visualization/tables/investment_cost-report.tex")
 
-
+from oemof.tools.economics import annuity
+aut_scenarios  = ["AUT"] +["AUT-" + str(s) for s in range(40, 100, 10)]
+conv_scenarios =  ["CONT"] #+ ["CONT-" + str(s) for s in range(10, 20, 10)]
+re_scenarios =  ["GRE"] + ["GRE-" + str(s) for s in range(40, 100, 10)]
+base_scenarios =  ["BASE"]+ ["BASE-" + str(s) for s in range(40, 100, 10)]
+base_invest = (annuity(800, 20, 0.05) * 1000) * 1.035 * 4293
+base_invest = 0
 lcoe = pd.DataFrame([
-    objective[base_scenarios].divide(28e6).values[0],
-    objective[ee_scenarios].divide(25e6).values[0],
-    objective[storage_scenarios].divide(28e6).values[0],
-    objective[re_scenarios].divide(28e6).values[0],
-    objective[conv_scenarios].divide(28e6).values[0]],
-    index=["Base", "EE", "STOR", "RE", "CONT"],
-    columns=["C-Opt", "40%", "50%","60%", "70%", "80%", "90%"]).round(2)
-ax = lcoe.T.plot(kind="line", marker="o", rot=0, color=sns.xkcd_palette(["windows blue", "amber", "purple", "magenta", "black"])) #cmap="YlGnBu"
+    objective[conv_scenarios].add(base_invest).divide(28e6).values[0],
+    objective[base_scenarios].add(base_invest).divide(28e6).values[0],
+    objective[re_scenarios].add(base_invest).divide(28e6).values[0],
+    objective[aut_scenarios].add(base_invest).divide(28e6).values[0]],
+    index=["CONT", "BASE", "GRE", "AUT"],
+    columns=["REF", "40%", "50%", "60%", "70%", "80%", "90%"]).round(2)
+
+ax = lcoe.T.plot(kind="line", marker="o", rot=0,
+    color=sns.xkcd_palette(["windows blue", "amber", "purple", "magenta", "black"])) #cmap="YlGnBu"
 ax.set_xlabel("Scenario")
 ax.set_ylabel("LCOE in $/MWh")
+ax.set_ylim(0, 120)
 lgd = ax.legend(
 )
 ax.grid(linestyle="--", lw=0.2)
@@ -385,20 +412,34 @@ plt.savefig(
     bbox_extra_artists=(lgd,),
     bbox_inches="tight",
 )
-
+lcoe = lcoe.fillna("-")
 lcoe.to_latex(
-        caption="LCOE at different demand levels and CO2 reduction.",
+        caption="LCOE in US $/MWh.",
         label="tab:lcoe",
         buf="visualization/tables/lcoe.tex")
+# energy plot ----------------------------------------------------------------
+names = {
+    "gas-cc": ['Amman-East', 'CC-New', 'Samra1', 'Samra2', 'Samra3','Samra4', "Qatrana", "Zarqa-ACWA"],
+    "gas-de": ['IPP3', 'IPP4'],
+    "gas-st": ['Aqaba2'],
+    "gas-gt": ['Amman-South', 'GT-New',  'Rehab', 'Risha'],
+    "shaleoil-st": ['Oil-Shale', 'Oil-New']
+}
+e = energy.drop(["JO-electricity-shortage"])
+#order = ["gas-cc", "gas-gt", "gas-st", "gas-de", "shaleoil-st", "phs", "battery"]
+x = conv_scenarios  + base_scenarios + re_scenarios + aut_scenarios
+e = e[x].dropna()
+e.rename(index={"JO-load": "demand", "JO-electricity-excess": "excess"}, inplace=True)
+e = e.T
+# for k,v in names.items():
+#     e[k] = e[k].sum(axis=1)
+#     e = e.drop(k, axis=1)
 
-
-energy = energy.drop(phs_storages + ["JO-electricity-shortage"])
-energy.rename(index={"JO-load": "demand", "JO-electricity-excess": "excess"}, inplace=True)
-ax = energy[conv_scenarios + base_scenarios].divide(1e6).T.plot(
-kind="bar",
-stacked=True,
-color=[color_dict.get(i.replace("-cos", "")) for i in energy.index],
-label=[i if not "-cos" in i else None for i in energy.index],
+ax = e.divide(1e6).plot(
+    kind="bar",
+    stacked=True,
+    color=[color_dict.get(i.replace("-cos", "")) for i in e.columns],
+    label=[i if not "-cos" in i else None for i in e.columns],
 )
 ax.legend()
 #ax.set_ylim(-60, 70)
@@ -406,19 +447,20 @@ handles, labels = ax.get_legend_handles_labels()
 lgd = {k: v for k, v in dict(zip(handles, labels)).items() if "-cos" not in v}
 ax.set_ylabel("Energy in TWh")
 ax.grid(linestyle="--", lw=0.5)
-plt.xticks(rotation=90)
+plt.xticks(rotation=00)
 
 ax2 = ax.twinx()
+
 co2.loc["CO2 (Mio. t)"][x].plot(
-linestyle="", marker="o", markersize=4, color="darkred", label="RE share", ax=ax2
+linestyle="", marker="o", markersize=4, color="darkred", label="CO2", ax=ax2
 )
 ax2.set_ylim(0, 10)
 ax2.set_ylabel("CO2 emissions in Mio. ton")
 
 lines2, labels2 = ax2.get_legend_handles_labels()
 lgd = ax.legend(list(lgd.keys()) + lines2, list(lgd.values()) + labels2,
-    loc="upper left",
-    bbox_to_anchor=(-0.05, -0.3),
+    loc="lower left",
+    bbox_to_anchor=(-0.05, -0.4),
     ncol=4,
     borderaxespad=0,
     frameon=False)
@@ -429,8 +471,44 @@ plt.savefig(
     bbox_extra_artists=(lgd,),
     bbox_inches="tight",
 )
+e.divide(1e6).round(2).to_latex(
+    caption="Energy supply and demand in TWh.",
+    label="tab:energy",
+    buf="visualization/tables/energy.tex")
+
+# -operation flh ------------------------------------------------
+
+e = energy.drop(phs_storages + ["JO-electricity-shortage"])
+#order = ["gas-cc", "gas-gt", "gas-st", "gas-de", "shaleoil-st", "phs", "battery"]
+e.rename(index={"JO-load": "demand", "JO-electricity-excess": "excess"}, inplace=True)
+e = e[fu_scenarios]
+c = all_capacities[fu_scenarios].xs('capacity', level=4)
+c.index = c.index.droplevel([1,2,3])
+
+e, c = e.dropna(), c.dropna()
+flh = (e / c).drop(
+    renewables + phs_storages + ["demand", "excess", "phs", "phs-cos", "battery", "battery-cos"])
+flh.divide(1e6).round(0).to_latex(
+    caption="Fulload hours of conventional units in SQ.",
+    label="tab:flh_sq",
+    buf="visualization/tables/flh-sq.tex")
 
 
+ax = flh.plot(
+        kind="bar", cmap="Blues", rot=60)
+ax.grid(linestyle="--", lw=0.2)
+ax.set_ylabel("Fulload hours")
+lgd = ax.legend(
+    loc="upper left",
+    bbox_to_anchor=(0, -0.3),
+    ncol=4,
+    borderaxespad=0,
+    frameon=False)
+plt.savefig(
+    "visualization/figures/conventional-flh-sq.pdf",
+    bbox_extra_artists=(lgd,),
+    bbox_inches="tight",
+)
 # Operation --------------------------------------------------------------------
 
 energy = {}
@@ -441,33 +519,45 @@ for dir in os.listdir(path):
     )
     energy[dir] = temp
 
-name = conv_scenarios[0]
+name = base_scenarios[0]
 select = energy[name]
-range = [168*10, 168*10+168]
+
+names = {
+    "gas-cc": ['Amman-East', 'CC-New', 'Samra1', 'Samra2', 'Samra3','Samra4', "Qatrana", "Zarqa-ACWA"],
+    "gas-de": ['IPP3', 'IPP4'],
+    "gas-st": ['Aqaba2'],
+    "gas-gt": ['Amman-South', 'GT-New',  'Rehab', 'Risha'],
+    "shaleoil-st": ['Oil-Shale', 'Oil-New']
+}
+
+range = [168*30, 168*30+168]
 select.index = select.reset_index().index
 ax = select["JO-load"].plot(
     linestyle="-",  color="darkred", label="Load", rot=45
 )
 select = select.drop(["JO-load", "JO-electricity-shortage"], axis=1)
-select["phs"] = select[phs_storages].sum(axis=1)
-select = select.drop(phs_storages, axis=1)
+#for k,v in names.items():
+#    select[k] = select[v].sum(axis=1)
+#    select = select.drop(v, axis=1)
+
+#select["phs"] = select[phs_storages].sum(axis=1)
+#select = select.drop(phs_storages, axis=1)
 
 neg = select[["phs", "battery"]].clip(upper=0)
-order = ["hydro-ror", "solar-pv", "wind-onshore", "gas-cc", "shaleoil-st", "gas-gt", "phs", "battery"]
+order = ["hydro-ror", "solar-pv", "wind-onshore", "gas-cc", "gas-gt", "gas-st", "gas-de", "shaleoil-st", "phs", "battery"]
 
-select[order].clip(lower=0).iloc[range[0]: range[1]].plot.area(ax = ax,
+select[[c for c in order if c in select.columns]].clip(lower=0).iloc[range[0]: range[1]].plot.area(ax = ax,
     rot=45, color=[color_dict.get(c) for c in select[order].columns], lw=0)
 ax.set_prop_cycle(None)
 neg.plot.area(
     ax=ax, lw=0, legend=None, color=[color_dict.get(c) for c in neg.columns], stacked=True, rot=0)
 
 ax.set_xlim(range)
-ax.set_ylim(-1000, 8500)
+ax.set_ylim(-500, 7000)
 ax.set_ylabel("Energy in MW")
 ax.grid(linestyle="--", lw=0.2)
 
 #ax2.set_ylim(0, 10)
-ax2.set_ylabel("Electricity load in MW")
 lgd = ax.legend(
     loc="upper left",
     bbox_to_anchor=(-0.05, -0.15),
@@ -479,6 +569,7 @@ plt.savefig(
     bbox_extra_artists=(lgd,),
     bbox_inches="tight",
 )
+
 
 
 # Cylces ---------------------------------------------------------
